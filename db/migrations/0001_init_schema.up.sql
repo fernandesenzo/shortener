@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS links (
+    code VARCHAR(6) PRIMARY KEY,
+    original_url TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)

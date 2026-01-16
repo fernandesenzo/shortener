@@ -5,7 +5,7 @@ import "time"
 type Link struct {
 	ID          string
 	OriginalURL string
-	ShortURL    string
+	Code        string
 	CreatedAt   time.Time
 	ExpiresAt   *time.Time
 }
