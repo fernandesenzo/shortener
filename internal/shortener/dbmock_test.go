@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
+	"github.com/fernandesenzo/shortener/internal/shortener"
 )
 
 type MockRepository struct {
@@ -15,7 +16,7 @@ func (m *MockRepository) Save(link *domain.Link) error {
 	if m.shouldError {
 		return errors.New("simulated error")
 	}
-	if m.items[link.Code] == nil {
+	if m.items == nil {
 		m.items = make(map[string]*domain.Link)
 	}
 	m.items[link.Code] = link
@@ -23,5 +24,9 @@ func (m *MockRepository) Save(link *domain.Link) error {
 }
 
 func (m *MockRepository) Get(code string) (*domain.Link, error) {
-	return nil, nil
+	_, exists := m.items[code]
+	if !exists {
+		return nil, shortener.ErrRecordNotFound
+	}
+	return m.items[code], nil
 }

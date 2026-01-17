@@ -42,8 +42,7 @@ func (r *PostgresRepository) Get(code string) (*domain.Link, error) {
 
 	if err := row.Scan(&link.Code, &link.OriginalURL, &link.CreatedAt); err != nil {
 		if err == sql.ErrNoRows {
-			//TODO: create a special error type
-			return nil, err
+			return nil, ErrRecordNotFound
 		}
 		return nil, err
 	}

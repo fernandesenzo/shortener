@@ -45,6 +45,21 @@ func TestPostgresRepoSaveAndGet(t *testing.T) {
 	})
 }
 
+func TestPostgresRepoGetNotFound(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := shortener.NewPostgresRepository(db)
+
+	t.Run("get non existing link", func(t *testing.T) {
+		_, err := repo.Get("123456")
+
+		if err != shortener.ErrRecordNotFound {
+			t.Fatalf("expected ErrRecordNotFound, got %v", err)
+		}
+	})
+}
+
 func setupTestDB(t *testing.T) (*sql.DB, func()) {
 	ctx := context.Background()
 
