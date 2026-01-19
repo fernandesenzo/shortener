@@ -1,10 +1,8 @@
 package shortener
 
 import (
-	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
@@ -29,7 +27,7 @@ func NewService(repo Repository) *Service {
 func (s *Service) Shorten(originalURL string) (*domain.Link, error) {
 	code, err := generateCode(6)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrGenCode, err)
+		return nil, fmt.Errorf("%w: %v", domain.ErrLinkCreationFailed, err)
 	}
 	link := &domain.Link{
 		Code:        code,
@@ -38,25 +36,20 @@ func (s *Service) Shorten(originalURL string) (*domain.Link, error) {
 	}
 	if err := s.repo.Save(link); err != nil {
 
-		return nil, fmt.Errorf("%w: %v", ErrLinkNotSaved, err)
+		return nil, fmt.Errorf("%w: %v", domain.ErrLinkCreationFailed, err)
 	}
 	return link, nil
 }
 
-// private functions
+func (s *Service) Get(code string) (*domain.Link, error) {
+	link, err := s.repo.Get(code)
 
-const validChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
-func generateCode(n int) (string, error) {
-	code := make([]byte, n)
-	maxValue := big.NewInt(int64(len(validChars)))
-
-	for i := range code {
-		num, err := rand.Int(rand.Reader, maxValue)
-		if err != nil {
-			return "", err
+	if err != nil {
+		if errors.Is(err, ErrRecordNotFound) {
+			return nil, domain.ErrLinkNotFound
 		}
-		code[i] = validChars[num.Int64()]
+		return nil, fmt.Errorf("could not get link: %w", err)
 	}
-	return string(code), nil
+
+	return link, nil
 }

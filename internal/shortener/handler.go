@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+
+	"github.com/fernandesenzo/shortener/internal/domain"
 )
 
 type shortenLinkRequest struct {
@@ -34,7 +36,7 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 
 	link, err := h.srv.Shorten(req.URL)
 	if err != nil {
-		if errors.Is(err, ErrLinkNotSaved) || errors.Is(err, ErrGenCode) {
+		if errors.Is(err, domain.ErrLinkCreationFailed) {
 			//TODO: log this error
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
