@@ -8,12 +8,6 @@ import (
 	"github.com/fernandesenzo/shortener/internal/domain"
 )
 
-// Sentinel Errors
-var (
-	ErrGenCode      = errors.New("error generating code")
-	ErrLinkNotSaved = errors.New("link not saved")
-)
-
 type Service struct {
 	repo Repository
 }
@@ -33,6 +27,10 @@ func (s *Service) Shorten(originalURL string) (*domain.Link, error) {
 		Code:        code,
 		OriginalURL: originalURL,
 		CreatedAt:   time.Now(),
+	}
+
+	if len(link.OriginalURL) > 100 {
+		return nil, domain.ErrURLTooLong
 	}
 	if err := s.repo.Save(link); err != nil {
 

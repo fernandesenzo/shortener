@@ -2,6 +2,7 @@ package shortener_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
@@ -61,5 +62,21 @@ func TestGetNonExistentLink(t *testing.T) {
 	}
 	if !errors.Is(err, domain.ErrLinkNotFound) {
 		t.Errorf("expected ErrLinkNotFound, got %v", err)
+	}
+}
+
+func TestShortenLongURL(t *testing.T) {
+	repo := &MockRepository{}
+
+	service := shortener.NewService(repo)
+
+	url := strings.Repeat("a", 101)
+
+	_, err := service.Shorten(url)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !errors.Is(err, domain.ErrURLTooLong) {
+		t.Errorf("expected ErrURLTooLong, got: %v", err)
 	}
 }

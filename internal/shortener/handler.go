@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
 )
@@ -25,12 +26,13 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	var req shortenLinkRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
 
-	if req.URL == "" {
-		http.Error(w, "url is required", http.StatusBadRequest)
+	_, err := url.ParseRequestURI(req.URL)
+	if err != nil {
+		http.Error(w, "invalid url", http.StatusBadRequest)
 		return
 	}
 
@@ -41,7 +43,11 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if errors.Is(err, domain.ErrURLTooLong) {
+			http.Error(w, "url too long", http.StatusUnprocessableEntity)
+			return
+		}
+		http.Error(w, "unknown error, try again", http.StatusInternalServerError)
 		return
 	}
 

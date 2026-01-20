@@ -2,8 +2,11 @@ package shortener
 
 import (
 	"crypto/rand"
+	"errors"
 	"math/big"
 )
+
+var ErrGenCode = errors.New("error generating code")
 
 const validChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
