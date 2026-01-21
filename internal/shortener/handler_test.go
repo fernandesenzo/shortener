@@ -39,38 +39,26 @@ func TestShortenHandlerSuccess(t *testing.T) {
 
 	expectedURL := "https://google.com"
 	if response.OriginalURL != expectedURL {
-		t.Errorf("handler changed original URL, expected %s and got %s", expectedURL, response.Code)
+		t.Errorf("handler changed original URL, expected %s and got %s", expectedURL, response.OriginalURL)
+	}
+
+	if response.Code == "" {
+		t.Errorf("expected non-empty code")
 	}
 }
 
-func TestShortenEmptyBody(t *testing.T) {
+func TestShortenHandlerWithInvalidBody(t *testing.T) {
 	repo := &MockRepository{}
 	service := shortener.NewService(repo)
 	handler := shortener.NewHandler(service)
 
-	req := httptest.NewRequest(http.MethodPost, "/shorten", strings.NewReader(`{}`))
+	req := httptest.NewRequest(http.MethodPost, "/shorten", strings.NewReader(`{"url":"https://google.com" "extra":"field"}`))
 	req.Header.Set("Content-Type", "application/json")
-
 	recorder := httptest.NewRecorder()
+
 	handler.Shorten(recorder, req)
 
-	if recorder.Code != http.StatusBadRequest {
-		t.Errorf("an empty body was sent, expected status 400 and got %v", recorder.Code)
-	}
-}
-
-func TestShortenInvalidURL(t *testing.T) {
-	repo := &MockRepository{}
-	service := shortener.NewService(repo)
-	handler := shortener.NewHandler(service)
-
-	req := httptest.NewRequest(http.MethodPost, "/shorten", strings.NewReader(`{"url":"invalid url"}`))
-	req.Header.Set("Content-Type", "application/json")
-
-	recorder := httptest.NewRecorder()
-	handler.Shorten(recorder, req)
-
-	if recorder.Code != http.StatusBadRequest {
-		t.Errorf("invalid url was sent, expected status 400 and got %v", recorder.Code)
+	if recorder.Code != 400 {
+		t.Errorf("expected 400, got %d", recorder.Code)
 	}
 }

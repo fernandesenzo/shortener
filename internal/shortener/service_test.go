@@ -70,7 +70,7 @@ func TestShortenLongURL(t *testing.T) {
 
 	service := shortener.NewService(repo)
 
-	url := strings.Repeat("a", 101)
+	url := "https://google.com/" + strings.Repeat("a", 101)
 
 	_, err := service.Shorten(url)
 	if err == nil {

@@ -3,6 +3,7 @@ package shortener
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
@@ -19,19 +20,24 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) Shorten(originalURL string) (*domain.Link, error) {
+	_, err := url.ParseRequestURI(originalURL)
+	if err != nil {
+		return nil, domain.ErrInvalidURL
+	}
 	code, err := generateCode(6)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrLinkCreationFailed, err)
 	}
+	if len(originalURL) > 100 {
+		return nil, domain.ErrURLTooLong
+	}
+
 	link := &domain.Link{
 		Code:        code,
 		OriginalURL: originalURL,
 		CreatedAt:   time.Now(),
 	}
 
-	if len(link.OriginalURL) > 100 {
-		return nil, domain.ErrURLTooLong
-	}
 	if err := s.repo.Save(link); err != nil {
 
 		return nil, fmt.Errorf("%w: %v", domain.ErrLinkCreationFailed, err)
