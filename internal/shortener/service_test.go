@@ -1,6 +1,7 @@
 package shortener_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -16,7 +17,7 @@ func TestShortenSuccess(t *testing.T) {
 
 	originalURL := "https://google.com"
 
-	link, err := service.Shorten(originalURL)
+	link, err := service.Shorten(context.Background(), originalURL)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -40,12 +41,12 @@ func TestGetExistingLink(t *testing.T) {
 
 	service := shortener.NewService(repo)
 
-	repo.Save(&domain.Link{
+	_ = repo.Save(context.Background(), &domain.Link{
 		Code:        "123456",
 		OriginalURL: "https://google.com",
 	})
 
-	_, err := service.Get("123456")
+	_, err := service.Get(context.Background(), "123456")
 	if err != nil {
 		t.Fatalf("should not return error, returned %v", err)
 	}
@@ -56,7 +57,7 @@ func TestGetNonExistentLink(t *testing.T) {
 
 	service := shortener.NewService(repo)
 
-	_, err := service.Get("123456")
+	_, err := service.Get(context.Background(), "123456")
 	if err == nil {
 		t.Error("expected error")
 	}
@@ -72,7 +73,7 @@ func TestShortenLongURL(t *testing.T) {
 
 	url := "https://google.com/" + strings.Repeat("a", 101)
 
-	_, err := service.Shorten(url)
+	_, err := service.Shorten(context.Background(), url)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}

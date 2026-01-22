@@ -3,6 +3,7 @@ package shortener_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -28,14 +29,14 @@ func TestPostgresRepoSaveAndGet(t *testing.T) {
 	}
 
 	t.Run("save new link", func(t *testing.T) {
-		err := repo.Save(link)
+		err := repo.Save(context.Background(), link)
 		if err != nil {
 			t.Fatalf("failed to save link: %v", err)
 		}
 	})
 
 	t.Run("get existing link", func(t *testing.T) {
-		savedLink, err := repo.Get(link.Code)
+		savedLink, err := repo.Get(context.Background(), link.Code)
 		if err != nil {
 			t.Fatalf("failed to get saved link: %v", err)
 		}
@@ -52,9 +53,9 @@ func TestPostgresRepoGetNotFound(t *testing.T) {
 	repo := shortener.NewPostgresRepository(db)
 
 	t.Run("get non existing link", func(t *testing.T) {
-		_, err := repo.Get("123456")
+		_, err := repo.Get(context.Background(), "123456")
 
-		if err != shortener.ErrRecordNotFound {
+		if !errors.Is(err, shortener.ErrRecordNotFound) {
 			t.Fatalf("expected ErrRecordNotFound, got %v", err)
 		}
 	})

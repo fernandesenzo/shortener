@@ -1,14 +1,15 @@
 package shortener
 
 import (
+	"context"
 	"errors"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
 )
 
 type Repository interface {
-	Save(link *domain.Link) error
-	Get(code string) (*domain.Link, error)
+	Save(ctx context.Context, link *domain.Link) error
+	Get(ctx context.Context, code string) (*domain.Link, error)
 }
 
 var ErrRecordNotFound = errors.New("record not found")

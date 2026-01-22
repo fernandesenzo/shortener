@@ -1,6 +1,7 @@
 package shortener_test
 
 import (
+	"context"
 	"errors"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
@@ -12,7 +13,7 @@ type MockRepository struct {
 	shouldError bool
 }
 
-func (m *MockRepository) Save(link *domain.Link) error {
+func (m *MockRepository) Save(ctx context.Context, link *domain.Link) error {
 	if m.shouldError {
 		return errors.New("simulated error")
 	}
@@ -23,7 +24,7 @@ func (m *MockRepository) Save(link *domain.Link) error {
 	return nil
 }
 
-func (m *MockRepository) Get(code string) (*domain.Link, error) {
+func (m *MockRepository) Get(ctx context.Context, code string) (*domain.Link, error) {
 	_, exists := m.items[code]
 	if !exists {
 		return nil, shortener.ErrRecordNotFound

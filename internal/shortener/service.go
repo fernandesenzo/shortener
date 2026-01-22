@@ -1,6 +1,7 @@
 package shortener
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -19,7 +20,7 @@ func NewService(repo Repository) *Service {
 	}
 }
 
-func (s *Service) Shorten(originalURL string) (*domain.Link, error) {
+func (s *Service) Shorten(ctx context.Context, originalURL string) (*domain.Link, error) {
 	_, err := url.ParseRequestURI(originalURL)
 	if err != nil {
 		return nil, domain.ErrInvalidURL
@@ -38,15 +39,15 @@ func (s *Service) Shorten(originalURL string) (*domain.Link, error) {
 		CreatedAt:   time.Now(),
 	}
 
-	if err := s.repo.Save(link); err != nil {
+	if err := s.repo.Save(ctx, link); err != nil {
 
 		return nil, fmt.Errorf("%w: %v", domain.ErrLinkCreationFailed, err)
 	}
 	return link, nil
 }
 
-func (s *Service) Get(code string) (*domain.Link, error) {
-	link, err := s.repo.Get(code)
+func (s *Service) Get(ctx context.Context, code string) (*domain.Link, error) {
+	link, err := s.repo.Get(ctx, code)
 
 	if err != nil {
 		if errors.Is(err, ErrRecordNotFound) {

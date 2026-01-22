@@ -31,7 +31,7 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	link, err := h.srv.Shorten(req.URL)
+	link, err := h.srv.Shorten(r.Context(), req.URL)
 	if err != nil {
 		if errors.Is(err, domain.ErrLinkCreationFailed) {
 			//TODO: log this error

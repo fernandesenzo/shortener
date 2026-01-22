@@ -3,7 +3,7 @@ package shortener
 import (
 	"context"
 	"database/sql"
-	"time"
+	"errors"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
 )
@@ -17,11 +17,7 @@ func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 		db}
 }
 
-// TODO: PUT REAL CONTEXT
-func (r *PostgresRepository) Save(link *domain.Link) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
+func (r *PostgresRepository) Save(ctx context.Context, link *domain.Link) error {
 	query := `INSERT INTO links (code, original_url, created_at) VALUES ($1, $2, $3)`
 
 	_, err := r.db.ExecContext(ctx, query, link.Code, link.OriginalURL, link.CreatedAt)
@@ -32,9 +28,7 @@ func (r *PostgresRepository) Save(link *domain.Link) error {
 	return nil
 }
 
-func (r *PostgresRepository) Get(code string) (*domain.Link, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+func (r *PostgresRepository) Get(ctx context.Context, code string) (*domain.Link, error) {
 
 	query := `SELECT code, original_url, created_at FROM links WHERE code = $1`
 
@@ -43,7 +37,7 @@ func (r *PostgresRepository) Get(code string) (*domain.Link, error) {
 	var link domain.Link
 
 	if err := row.Scan(&link.Code, &link.OriginalURL, &link.CreatedAt); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrRecordNotFound
 		}
 		return nil, err
