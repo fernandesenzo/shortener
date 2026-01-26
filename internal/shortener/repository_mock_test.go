@@ -13,7 +13,7 @@ type MockRepository struct {
 	shouldError bool
 }
 
-func (m *MockRepository) Save(ctx context.Context, link *domain.Link) error {
+func (m *MockRepository) Save(_ context.Context, link *domain.Link) error {
 	if m.shouldError {
 		return errors.New("simulated error")
 	}
@@ -24,10 +24,17 @@ func (m *MockRepository) Save(ctx context.Context, link *domain.Link) error {
 	return nil
 }
 
-func (m *MockRepository) Get(ctx context.Context, code string) (*domain.Link, error) {
+func (m *MockRepository) Get(_ context.Context, code string) (*domain.Link, error) {
+	if m.shouldError {
+		return nil, errors.New("simulated error")
+	}
 	_, exists := m.items[code]
 	if !exists {
 		return nil, shortener.ErrRecordNotFound
 	}
 	return m.items[code], nil
+}
+
+func (m *MockRepository) SetShouldError(shouldError bool) {
+	m.shouldError = shouldError
 }

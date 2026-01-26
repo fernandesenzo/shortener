@@ -1,4 +1,4 @@
-package shortener
+package utils
 
 import (
 	"crypto/rand"
@@ -10,7 +10,7 @@ var ErrGenCode = errors.New("error generating code")
 
 const validChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-func generateCode(n int) (string, error) {
+func GenerateCode(n int) (string, error) {
 	code := make([]byte, n)
 	maxValue := big.NewInt(int64(len(validChars)))
 

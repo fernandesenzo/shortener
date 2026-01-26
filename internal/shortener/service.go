@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
+	"github.com/fernandesenzo/shortener/internal/shortener/utils"
 )
 
 type Service struct {
@@ -21,16 +22,18 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) Shorten(ctx context.Context, originalURL string) (*domain.Link, error) {
+	if len(originalURL) > 100 {
+		return nil, domain.ErrURLTooLong
+	}
+
 	_, err := url.ParseRequestURI(originalURL)
 	if err != nil {
 		return nil, domain.ErrInvalidURL
 	}
-	code, err := generateCode(6)
+
+	code, err := utils.GenerateCode(6)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrLinkCreationFailed, err)
-	}
-	if len(originalURL) > 100 {
-		return nil, domain.ErrURLTooLong
 	}
 
 	link := &domain.Link{
