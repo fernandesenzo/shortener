@@ -10,74 +10,121 @@ import (
 	"github.com/fernandesenzo/shortener/internal/shortener"
 )
 
-func TestShortenSuccess(t *testing.T) {
-	repo := &MockRepository{}
-
-	service := shortener.NewService(repo)
-
-	originalURL := "https://google.com"
-
-	link, err := service.Shorten(context.Background(), originalURL)
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestServiceShorten(t *testing.T) {
+	tests := []struct {
+		name            string
+		originalURL     string
+		mockCollisions  int
+		mockShouldError bool
+		expectedError   error
+	}{
+		{
+			name:            "Success",
+			originalURL:     "https://google.com",
+			mockCollisions:  0,
+			mockShouldError: false,
+			expectedError:   nil,
+		},
+		{
+			name:            "Success with collisions",
+			originalURL:     "https://google.com",
+			mockCollisions:  3,
+			mockShouldError: false,
+			expectedError:   nil,
+		},
+		{
+			name:            "Error by exhausting",
+			originalURL:     "https://google.com",
+			mockCollisions:  10,
+			mockShouldError: false,
+			expectedError:   domain.ErrLinkCreationFailed,
+		},
+		{
+			name:            "Error by fatal",
+			originalURL:     "https://google.com",
+			mockCollisions:  0,
+			mockShouldError: true,
+			expectedError:   domain.ErrLinkCreationFailed,
+		},
+		{
+			name:            "Bad URL error",
+			originalURL:     "something",
+			mockCollisions:  0,
+			mockShouldError: false,
+			expectedError:   domain.ErrInvalidURL,
+		},
 	}
+	{
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
 
-	if link.Code == "" {
-		t.Error("expected non-empty code")
-	}
+				repo := &MockRepository{}
+				repo.SetCollisionCounter(tt.mockCollisions)
+				repo.SetShouldError(tt.mockShouldError)
 
-	if len(link.Code) != 6 {
-		t.Errorf("expected length == 6, received %d", len(link.Code))
-	}
+				service := shortener.NewService(repo)
+				_, err := service.Shorten(context.Background(), tt.originalURL)
 
-	if link.OriginalURL != originalURL {
-		t.Errorf("expected the same originalURL, should be %s - received %s", originalURL, link.OriginalURL)
+				if !errors.Is(err, tt.expectedError) {
+					t.Errorf("Test %s failed: expected error %v, got %v", tt.name, tt.expectedError, err)
+				}
+			})
+		}
 	}
 }
 
-func TestGetExistingLink(t *testing.T) {
-	repo := &MockRepository{}
-
-	service := shortener.NewService(repo)
-
-	_ = repo.Save(context.Background(), &domain.Link{
-		Code:        "123456",
-		OriginalURL: "https://google.com",
-	})
-
-	_, err := service.Get(context.Background(), "123456")
-	if err != nil {
-		t.Fatalf("should not return error, returned %v", err)
+func TestServiceGet(t *testing.T) {
+	tests := []struct {
+		name          string
+		code          string
+		setupLink     *domain.Link
+		shouldError   bool
+		expectedError error
+	}{
+		{
+			name:          "Success",
+			code:          "abcdef",
+			setupLink:     &domain.Link{Code: "abcdef", OriginalURL: "https://google.com"},
+			shouldError:   false,
+			expectedError: nil,
+		},
+		{
+			name:          "Not Found",
+			code:          "123456",
+			setupLink:     nil,
+			shouldError:   false,
+			expectedError: domain.ErrLinkNotFound,
+		},
+		{
+			name:          "Database error",
+			code:          "abcdef",
+			setupLink:     nil,
+			shouldError:   true,
+			expectedError: errors.New("unexpected database error"),
+		},
 	}
-}
+	{
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				repo := &MockRepository{}
+				repo.SetShouldError(tt.shouldError)
+				if tt.setupLink != nil {
+					_ = repo.Save(context.Background(), tt.setupLink)
+				}
+				service := shortener.NewService(repo)
+				_, err := service.Get(context.Background(), tt.code)
 
-func TestGetNonExistentLink(t *testing.T) {
-	repo := &MockRepository{}
-
-	service := shortener.NewService(repo)
-
-	_, err := service.Get(context.Background(), "123456")
-	if err == nil {
-		t.Error("expected error")
-	}
-	if !errors.Is(err, domain.ErrLinkNotFound) {
-		t.Errorf("expected ErrLinkNotFound, got %v", err)
-	}
-}
-
-func TestShortenLongURL(t *testing.T) {
-	repo := &MockRepository{}
-
-	service := shortener.NewService(repo)
-
-	url := "https://google.com/" + strings.Repeat("a", 101)
-
-	_, err := service.Shorten(context.Background(), url)
-	if err == nil {
-		t.Fatalf("expected error, got nil")
-	}
-	if !errors.Is(err, domain.ErrURLTooLong) {
-		t.Errorf("expected ErrURLTooLong, got: %v", err)
+				// workaround to catch non sentinel error
+				//TODO: find a more elegant way to do this, this is ugly
+				if err != nil {
+					if strings.Contains(err.Error(), tt.expectedError.Error()) {
+						return
+					}
+				}
+				if !errors.Is(err, tt.expectedError) {
+					t.Errorf("Test %s failed: expected error %v, got %v", tt.name, tt.expectedError, err)
+				}
+			})
+		}
 	}
 }

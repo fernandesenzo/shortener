@@ -13,3 +13,4 @@ type Repository interface {
 }
 
 var ErrRecordNotFound = errors.New("record not found")
+var ErrRecordAlreadyExists = errors.New("record already exists")

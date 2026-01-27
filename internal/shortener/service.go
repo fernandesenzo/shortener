@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"time"
 
@@ -31,22 +32,29 @@ func (s *Service) Shorten(ctx context.Context, originalURL string) (*domain.Link
 		return nil, domain.ErrInvalidURL
 	}
 
-	code, err := utils.GenerateCode(6)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", domain.ErrLinkCreationFailed, err)
-	}
+	for i := 0; i < 5; i++ {
+		code, err := utils.GenerateCode(6)
+		if err != nil {
+			continue
+		}
 
-	link := &domain.Link{
-		Code:        code,
-		OriginalURL: originalURL,
-		CreatedAt:   time.Now(),
-	}
+		link := &domain.Link{
+			Code:        code,
+			OriginalURL: originalURL,
+			CreatedAt:   time.Now(),
+		}
 
-	if err := s.repo.Save(ctx, link); err != nil {
+		if err := s.repo.Save(ctx, link); err != nil {
+			if errors.Is(err, ErrRecordAlreadyExists) {
+				continue
+			}
+			return nil, fmt.Errorf("%w: %v", domain.ErrLinkCreationFailed, err)
+		}
 
-		return nil, fmt.Errorf("%w: %v", domain.ErrLinkCreationFailed, err)
+		return link, nil
 	}
-	return link, nil
+	return nil, fmt.Errorf("%w: failed to generate unique code after 5 attempts", domain.ErrLinkCreationFailed)
+
 }
 
 func (s *Service) Get(ctx context.Context, code string) (*domain.Link, error) {
@@ -56,7 +64,8 @@ func (s *Service) Get(ctx context.Context, code string) (*domain.Link, error) {
 		if errors.Is(err, ErrRecordNotFound) {
 			return nil, domain.ErrLinkNotFound
 		}
-		return nil, fmt.Errorf("could not get link: %w", err)
+		slog.ErrorContext(ctx, "failed to get link", "error", err, "code", code)
+		return nil, fmt.Errorf("unexpected database error: %w", err)
 	}
 
 	return link, nil

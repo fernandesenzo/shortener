@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
+	"github.com/lib/pq"
 )
 
 type PostgresRepository struct {
@@ -21,8 +22,11 @@ func (r *PostgresRepository) Save(ctx context.Context, link *domain.Link) error 
 	query := `INSERT INTO links (code, original_url, created_at) VALUES ($1, $2, $3)`
 
 	_, err := r.db.ExecContext(ctx, query, link.Code, link.OriginalURL, link.CreatedAt)
-
 	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return ErrRecordAlreadyExists
+		}
 		return err
 	}
 	return nil

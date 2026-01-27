@@ -9,16 +9,24 @@ import (
 )
 
 type MockRepository struct {
-	items       map[string]*domain.Link
-	shouldError bool
+	items            map[string]*domain.Link
+	shouldError      bool
+	collisionCounter int
 }
 
 func (m *MockRepository) Save(_ context.Context, link *domain.Link) error {
 	if m.shouldError {
 		return errors.New("simulated error")
 	}
+	if m.collisionCounter > 0 {
+		m.collisionCounter--
+		return shortener.ErrRecordAlreadyExists
+	}
 	if m.items == nil {
 		m.items = make(map[string]*domain.Link)
+	}
+	if m.items[link.Code] != nil {
+		return shortener.ErrRecordAlreadyExists
 	}
 	m.items[link.Code] = link
 	return nil
@@ -37,4 +45,8 @@ func (m *MockRepository) Get(_ context.Context, code string) (*domain.Link, erro
 
 func (m *MockRepository) SetShouldError(shouldError bool) {
 	m.shouldError = shouldError
+}
+
+func (m *MockRepository) SetCollisionCounter(amount int) {
+	m.collisionCounter = amount
 }

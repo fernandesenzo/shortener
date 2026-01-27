@@ -10,6 +10,7 @@ import (
 	"github.com/fernandesenzo/shortener/internal/domain"
 )
 
+// TODO: check recover and cors
 type Handler struct {
 	srv *Service
 }
@@ -78,6 +79,7 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid url", http.StatusBadRequest)
 			return
 		}
+		slog.ErrorContext(r.Context(), "unknown error when creating link", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
