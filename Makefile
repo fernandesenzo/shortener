@@ -21,4 +21,4 @@ create-migration:
 run: db-up
 	@sleep 3
 	@make migrate-up
-	go run cmd/api/main.go
+	go run ./cmd/api

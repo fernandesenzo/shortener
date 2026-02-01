@@ -12,7 +12,6 @@ import (
 
 	"github.com/joho/godotenv"
 
-	// 1. Importamos sua nova camada de infraestrutura
 	"github.com/fernandesenzo/shortener/internal/platform/postgres"
 	"github.com/fernandesenzo/shortener/internal/shortener"
 )
@@ -63,9 +62,11 @@ func run() error {
 	mux.HandleFunc("POST /api/links", handler.Shorten)
 	mux.HandleFunc("GET /{code}", handler.Get)
 
+	loggedMux := LoggingMiddleware(mux)
+
 	srv := &http.Server{
 		Addr:         ":" + port,
-		Handler:      mux,
+		Handler:      loggedMux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
