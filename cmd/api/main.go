@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -11,8 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fernandesenzo/shortener/internal/shortener"
 	"github.com/joho/godotenv"
+
+	// 1. Importamos sua nova camada de infraestrutura
+	"github.com/fernandesenzo/shortener/internal/platform/postgres"
+	"github.com/fernandesenzo/shortener/internal/shortener"
 )
 
 func main() {
@@ -21,6 +23,7 @@ func main() {
 
 	if err := run(); err != nil {
 		slog.Error("application startup failed", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -38,23 +41,18 @@ func run() error {
 	if port == "" {
 		port = "8080"
 	}
-	//TODO: run init schema
-	db, err := sql.Open("postgres", dbURL)
+
+	db, err := postgres.NewConnection(dbURL)
 	if err != nil {
 		return err
 	}
+
 	defer func() {
 		if err := db.Close(); err != nil {
 			slog.Error("failed to close database", "error", err)
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := db.PingContext(ctx); err != nil {
-		return err
-	}
 	slog.Info("connected to db successfully")
 
 	repo := shortener.NewPostgresRepository(db)
@@ -95,7 +93,6 @@ func run() error {
 	if !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
-
 	err = <-shutdownError
 	if err != nil {
 		return err
@@ -103,5 +100,4 @@ func run() error {
 
 	slog.Info("server stopped gracefully")
 	return nil
-
 }

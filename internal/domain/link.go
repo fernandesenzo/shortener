@@ -7,5 +7,4 @@ type Link struct {
 	OriginalURL string
 	Code        string
 	CreatedAt   time.Time
-	ExpiresAt   *time.Time
 }

@@ -23,29 +23,18 @@ func NewHandler(srv *Service) *Handler {
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
-	if code == "" {
-		http.Error(w, "invalid code", http.StatusBadRequest)
-		return
-	}
+
 	link, err := h.srv.Get(r.Context(), code)
 	if err != nil {
 		if errors.Is(err, domain.ErrLinkNotFound) {
-			http.Error(w, "link not found or expired", http.StatusNotFound)
+			http.Error(w, "link not found", http.StatusNotFound)
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to get link", "error", err, "code", code)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
-		slog.ErrorContext(r.Context(), "failed to get link", "error", err)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	resp := getLinkResponse{
-		URL: link.OriginalURL,
-	}
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		slog.ErrorContext(r.Context(), "failed to encode response", "error", err)
-	}
+	http.Redirect(w, r, link.OriginalURL, http.StatusTemporaryRedirect)
 }
 
 func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
