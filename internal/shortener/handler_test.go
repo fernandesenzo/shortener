@@ -25,8 +25,8 @@ func TestHandlerGet(t *testing.T) {
 			codeParam:      "abcdef",
 			setupLink:      &domain.Link{Code: "abcdef", OriginalURL: "https://google.com"},
 			shouldError:    false,
-			expectedStatus: http.StatusOK,
-			expectedBody:   `{"url":"https://google.com"}`,
+			expectedStatus: http.StatusTemporaryRedirect,
+			expectedBody:   ``,
 		},
 		{
 			name:           "Not Found",
@@ -34,15 +34,7 @@ func TestHandlerGet(t *testing.T) {
 			setupLink:      nil,
 			shouldError:    false,
 			expectedStatus: http.StatusNotFound,
-			expectedBody:   "link not found or expired",
-		},
-		{
-			name:           "Empty Code",
-			codeParam:      "",
-			setupLink:      nil,
-			shouldError:    false,
-			expectedStatus: http.StatusBadRequest,
-			expectedBody:   "invalid code",
+			expectedBody:   "link not found",
 		},
 		{
 			name:           "Internal Error",

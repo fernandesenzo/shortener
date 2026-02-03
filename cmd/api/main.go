@@ -62,7 +62,11 @@ func run() error {
 	mux.HandleFunc("POST /api/links", handler.Shorten)
 	mux.HandleFunc("GET /{code}", handler.Get)
 
-	loggedMux := LoggingMiddleware(mux)
+	rateLimiter := NewRateLimiter(100, 200, 5, 10, 60)
+
+	ratedMux := rateLimiter.Middleware(mux)
+
+	loggedMux := LoggingMiddleware(ratedMux)
 
 	srv := &http.Server{
 		Addr:         ":" + port,
