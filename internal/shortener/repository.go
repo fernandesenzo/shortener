@@ -7,7 +7,7 @@ import (
 	"github.com/fernandesenzo/shortener/internal/domain"
 )
 
-type Repository interface {
+type LinkRepository interface {
 	Save(ctx context.Context, link *domain.Link) error
 	Get(ctx context.Context, code string) (*domain.Link, error)
 }

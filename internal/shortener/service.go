@@ -6,17 +6,16 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"time"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
 	"github.com/fernandesenzo/shortener/internal/shortener/utils"
 )
 
 type Service struct {
-	repo Repository
+	repo LinkRepository
 }
 
-func NewService(repo Repository) *Service {
+func NewService(repo LinkRepository) *Service {
 	return &Service{
 		repo: repo,
 	}
@@ -41,7 +40,6 @@ func (s *Service) Shorten(ctx context.Context, originalURL string) (*domain.Link
 		link := &domain.Link{
 			Code:        code,
 			OriginalURL: originalURL,
-			CreatedAt:   time.Now(),
 		}
 
 		if err := s.repo.Save(ctx, link); err != nil {

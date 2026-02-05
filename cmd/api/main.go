@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fernandesenzo/shortener/internal/jobs/linkprune"
 	"github.com/joho/godotenv"
 
 	"github.com/fernandesenzo/shortener/internal/platform/postgres"
@@ -55,6 +56,17 @@ func run() error {
 	slog.Info("connected to db successfully")
 
 	repo := shortener.NewPostgresRepository(db)
+
+	// activating job
+	expirationRule := time.Hour * 24
+	jobInterval := time.Minute * 10
+	prunerJob := linkprune.NewJob(repo, jobInterval, expirationRule)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	slog.Info("starting link pruner job")
+	go prunerJob.Run(ctx)
+
 	service := shortener.NewService(repo)
 	handler := shortener.NewHandler(service)
 

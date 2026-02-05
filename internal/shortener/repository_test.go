@@ -16,6 +16,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+// TODO: turn it into tables like on service and handler
 func TestPostgresRepoSaveAndGet(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -25,7 +26,6 @@ func TestPostgresRepoSaveAndGet(t *testing.T) {
 	link := &domain.Link{
 		Code:        "123456",
 		OriginalURL: "https://google.com",
-		CreatedAt:   time.Now().Truncate(time.Second),
 	}
 
 	t.Run("save new link", func(t *testing.T) {
@@ -44,18 +44,38 @@ func TestPostgresRepoSaveAndGet(t *testing.T) {
 			t.Fatalf("saved link has wrong original url")
 		}
 	})
-}
-
-func TestPostgresRepoGetNotFound(t *testing.T) {
-	db, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	repo := shortener.NewPostgresRepository(db)
-
 	t.Run("get non existing link", func(t *testing.T) {
-		_, err := repo.Get(context.Background(), "123456")
+		_, err := repo.Get(context.Background(), "111111")
 
 		if !errors.Is(err, shortener.ErrRecordNotFound) {
+			t.Fatalf("expected ErrRecordNotFound, got %v", err)
+		}
+	})
+	t.Run("prune non expired link", func(t *testing.T) {
+		err := repo.PruneExpired(context.Background(), 24*time.Hour)
+		if err != nil {
+			t.Fatalf("failed to prune expired links: %v", err)
+		}
+		_, err = repo.Get(context.Background(), link.Code)
+		if err != nil {
+			t.Fatalf("should not retrieve error, since link is not expired")
+		}
+	})
+	t.Run("prune expired links", func(t *testing.T) {
+		expiredCode := "111111"
+		pastTime := time.Now().Add(-24 * time.Hour)
+		_, err := db.ExecContext(context.Background(), `
+        INSERT INTO links (code, original_url, created_at) 
+        VALUES ($1, $2, $3)`,
+			expiredCode, "https://google.com", pastTime,
+		)
+		err = repo.PruneExpired(context.Background(), 24*time.Hour)
+		if err != nil {
+			t.Fatalf("failed to prune expired links: %v", err)
+		}
+		link, err = repo.Get(context.Background(), expiredCode)
+		if !errors.Is(err, shortener.ErrRecordNotFound) {
+			t.Logf("link: %+v", link)
 			t.Fatalf("expected ErrRecordNotFound, got %v", err)
 		}
 	})

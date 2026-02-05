@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
 	"github.com/lib/pq"
@@ -47,4 +48,12 @@ func (r *PostgresRepository) Get(ctx context.Context, code string) (*domain.Link
 	}
 
 	return &link, nil
+}
+
+// TODO: create tests for this function
+func (r *PostgresRepository) PruneExpired(ctx context.Context, ageLimit time.Duration) error {
+	cutoff := time.Now().Add(-ageLimit)
+	query := `DELETE FROM links WHERE created_at < $1`
+	_, err := r.db.ExecContext(ctx, query, cutoff)
+	return err
 }
