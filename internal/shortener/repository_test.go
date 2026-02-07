@@ -69,6 +69,9 @@ func TestPostgresRepoSaveAndGet(t *testing.T) {
         VALUES ($1, $2, $3)`,
 			expiredCode, "https://google.com", pastTime,
 		)
+		if err != nil {
+			t.Fatalf("failed to insert expired link: %v", err)
+		}
 		err = repo.PruneExpired(context.Background(), 24*time.Hour)
 		if err != nil {
 			t.Fatalf("failed to prune expired links: %v", err)
@@ -86,8 +89,8 @@ func setupTestDB(t *testing.T) (*sql.DB, func()) {
 
 	migrationPath := filepath.Join("..", "..", "db", "migrations", "0001_init_schema.up.sql")
 
-	pgContainer, err := postgres.RunContainer(ctx,
-		testcontainers.WithImage("postgres:15-alpine"),
+	pgContainer, err := postgres.Run(ctx,
+		"postgres:15-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("postgres"),
 		postgres.WithPassword("postgres"),

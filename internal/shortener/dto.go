@@ -7,7 +7,3 @@ type shortenLinkRequest struct {
 type shortenLinkResponse struct {
 	Code string `json:"code"`
 }
-
-type getLinkResponse struct {
-	URL string `json:"url"`
-}
