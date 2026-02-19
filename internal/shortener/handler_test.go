@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
+	"github.com/fernandesenzo/shortener/internal/identity"
 	"github.com/fernandesenzo/shortener/internal/shortener"
 )
 
@@ -15,7 +16,7 @@ func TestHandlerGet(t *testing.T) {
 	tests := []struct {
 		name           string
 		codeParam      string
-		setupLink      *domain.Link
+		setupLink      *domain.TemporaryLink
 		shouldError    bool
 		expectedStatus int
 		expectedBody   string
@@ -23,7 +24,7 @@ func TestHandlerGet(t *testing.T) {
 		{
 			name:           "Success",
 			codeParam:      "abcdef",
-			setupLink:      &domain.Link{Code: "abcdef", OriginalURL: "https://google.com"},
+			setupLink:      &domain.TemporaryLink{Code: "abcdef", OriginalURL: "https://google.com"},
 			shouldError:    false,
 			expectedStatus: http.StatusTemporaryRedirect,
 			expectedBody:   ``,
@@ -53,7 +54,7 @@ func TestHandlerGet(t *testing.T) {
 			repo.SetShouldError(tt.shouldError)
 
 			if tt.setupLink != nil {
-				_ = repo.Save(context.Background(), tt.setupLink)
+				_ = repo.save(context.Background(), tt.setupLink)
 			}
 
 			service := shortener.NewService(repo)
@@ -162,6 +163,8 @@ func TestHandlerShorten(t *testing.T) {
 			handler := shortener.NewHandler(service)
 
 			req := httptest.NewRequest(http.MethodPost, "/shorten", strings.NewReader(tt.reqBody))
+			ctx := identity.WithUserID(context.Background(), "")
+			req = req.WithContext(ctx)
 			req.Header.Set("Content-Type", tt.contentType)
 			w := httptest.NewRecorder()
 

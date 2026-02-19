@@ -1,85 +1,64 @@
 package main
 
 import (
+	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
+	"github.com/redis/go-redis/v9"
 )
 
-type client struct {
-	limiter  *rate.Limiter
-	lastSeen time.Time
-}
-
 type RateLimiter struct {
-	mutex         sync.Mutex
-	globalLimiter *rate.Limiter
-	clients       map[string]*client
-	requestsPerS  rate.Limit
-	burst         int
-	ttl           time.Duration
+	client      *redis.Client
+	ipLimit     int
+	globalLimit int
 }
 
-func NewRateLimiter(globalRequestsPerS int, globalBurst int, requestsPerS int, burst int, ttl int) *RateLimiter {
-	rl := &RateLimiter{
-		clients:       make(map[string]*client),
-		globalLimiter: rate.NewLimiter(rate.Limit(globalRequestsPerS), globalBurst),
-		requestsPerS:  rate.Limit(requestsPerS),
-		burst:         burst,
-		ttl:           time.Duration(ttl) * time.Second,
-	}
-	if ttl > 0 {
-		go rl.cleanup()
-	}
-
-	return rl
-}
-
-func (rl *RateLimiter) getClient(ip string) *rate.Limiter {
-	rl.mutex.Lock()
-	defer rl.mutex.Unlock()
-
-	c, exists := rl.clients[ip]
-	if !exists {
-		limiter := rate.NewLimiter(rl.requestsPerS, rl.burst)
-		rl.clients[ip] = &client{limiter: limiter, lastSeen: time.Now()}
-		return limiter
-	}
-
-	c.lastSeen = time.Now()
-	return c.limiter
-}
-
-func (rl *RateLimiter) cleanup() {
-	for {
-		time.Sleep(1 * time.Minute)
-		rl.mutex.Lock()
-		for ip, c := range rl.clients {
-			if time.Since(c.lastSeen) > rl.ttl {
-				delete(rl.clients, ip)
-			}
-		}
-		rl.mutex.Unlock()
+func NewRateLimiter(client *redis.Client, ipLimit, globalLimit int) *RateLimiter {
+	return &RateLimiter{
+		client:      client,
+		ipLimit:     ipLimit,
+		globalLimit: globalLimit,
 	}
 }
 
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !rl.globalLimiter.Allow() {
-			http.Error(w, "service unavailable, try again later", http.StatusServiceUnavailable)
+		ctx := r.Context()
+		now := time.Now().Unix()
+		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+
+		globalKey := fmt.Sprintf("rl:g:%d", now)
+		ipKey := fmt.Sprintf("rl:i:%s:%d", ip, now)
+
+		pipe := rl.client.Pipeline()
+		gCmd := pipe.Incr(ctx, globalKey)
+		iCmd := pipe.Incr(ctx, ipKey)
+
+		_, err := pipe.Exec(ctx)
+		if err != nil {
+			slog.ErrorContext(ctx, "ratelimiter: redis pipeline failed", "error", err, "ip", ip)
+			next.ServeHTTP(w, r)
 			return
 		}
-		ip, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			ip = r.RemoteAddr
+
+		if v, _ := gCmd.Result(); v == 1 {
+			rl.client.Expire(ctx, globalKey, 2*time.Second)
+		}
+		if v, _ := iCmd.Result(); v == 1 {
+			rl.client.Expire(ctx, ipKey, 2*time.Second)
 		}
 
-		limiter := rl.getClient(ip)
+		if gCmd.Val() > int64(rl.globalLimit) {
+			slog.WarnContext(ctx, "ratelimiter: global limit exceeded", "limit", rl.globalLimit, "current", gCmd.Val())
+			http.Error(w, "server capacity exceeded", http.StatusServiceUnavailable)
+			return
+		}
 
-		if !limiter.Allow() {
+		if iCmd.Val() > int64(rl.ipLimit) {
+			slog.DebugContext(ctx, "ratelimiter: ip limit exceeded", "ip", ip, "limit", rl.ipLimit)
 			http.Error(w, "too many requests", http.StatusTooManyRequests)
 			return
 		}

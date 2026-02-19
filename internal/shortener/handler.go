@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
+	"github.com/fernandesenzo/shortener/internal/identity"
 )
 
 // TODO: check recover and cors
@@ -34,7 +35,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, link.OriginalURL, http.StatusTemporaryRedirect)
+	http.Redirect(w, r, link.GetOriginalURL(), http.StatusTemporaryRedirect)
 }
 
 func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +53,14 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	link, err := h.srv.Shorten(r.Context(), req.URL)
+	//TODO: create a middleware that does this.
+	userID, ok := identity.GetUserID(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "failed to retrieve userID from context")
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+
+	link, err := h.srv.Shorten(r.Context(), req.URL, userID)
 	if err != nil {
 		if errors.Is(err, domain.ErrLinkCreationFailed) {
 			slog.ErrorContext(r.Context(), "failed to create link", "error", err, "url", req.URL)
@@ -77,7 +85,7 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	resp := shortenLinkResponse{
-		Code: link.Code,
+		Code: link.GetCode(),
 	}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		slog.ErrorContext(r.Context(), "failed to encode response", "error", err)

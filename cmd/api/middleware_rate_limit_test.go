@@ -1,101 +1,77 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
 
-type requestStep struct {
-	ip           string
-	expectedCode int
-}
+func TestRateLimiter(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	rl := NewRateLimiter(client, 2, 5)
 
-func repeatSteps(count int, ip string, expectedCode int) []requestStep {
-	steps := make([]requestStep, count)
-	for i := 0; i < count; i++ {
-		steps[i] = requestStep{ip: ip, expectedCode: expectedCode}
-	}
-	return steps
-}
+	handler := rl.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
 
-func TestRateLimiterMiddleware(t *testing.T) {
-	tests := []struct {
-		name        string
-		globalRPS   int
-		globalBurst int
-		ipRPS       int
-		ipBurst     int
-		steps       []requestStep
-	}{
-		{
-			name:        "should allow single request within limits",
-			globalRPS:   100,
-			globalBurst: 100,
-			ipRPS:       1,
-			ipBurst:     1,
-			steps: []requestStep{
-				{ip: "192.168.0.1", expectedCode: http.StatusOK},
-			},
-		},
-		{
-			name:        "should block IP after exceeding IP burst",
-			globalRPS:   100,
-			globalBurst: 100,
-			ipRPS:       1,
-			ipBurst:     3,
-			steps: append(
-				repeatSteps(3, "192.168.0.1", http.StatusOK),
-				requestStep{ip: "192.168.0.1", expectedCode: http.StatusTooManyRequests},
-			),
-		},
-		{
-			name:        "should block globally when server capacity is full",
-			globalRPS:   1,
-			globalBurst: 5,
-			ipRPS:       100,
-			ipBurst:     100,
-			steps: append(
-				repeatSteps(5, "10.0.0.1", http.StatusOK),
-				requestStep{ip: "10.0.0.2", expectedCode: http.StatusServiceUnavailable},
-			),
-		},
-		{
-			name:        "different IPs have different rates",
-			globalRPS:   100,
-			globalBurst: 100,
-			ipRPS:       1,
-			ipBurst:     1,
-			steps: []requestStep{
-				{ip: "192.168.0.1", expectedCode: http.StatusOK},
-				{ip: "192.168.0.1", expectedCode: http.StatusTooManyRequests},
-				{ip: "192.168.0.2", expectedCode: http.StatusOK},
-			},
-		},
-	}
+	t.Run("IP limit enforcement", func(t *testing.T) {
+		ip := "1.1.1.1"
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = ip + ":1234"
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rl := NewRateLimiter(tt.globalRPS, tt.globalBurst, tt.ipRPS, tt.ipBurst, 0)
-
-			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			})
-
-			middlewareToTest := rl.Middleware(nextHandler)
-
-			for i, step := range tt.steps {
-				req := httptest.NewRequest("GET", "http://localhost:8080/", nil)
-				req.RemoteAddr = step.ip + ":1234"
-
-				rr := httptest.NewRecorder()
-				middlewareToTest.ServeHTTP(rr, req)
-
-				if rr.Code != step.expectedCode {
-					t.Errorf("step %d (%s): got status %d, expected %d",
-						i+1, step.ip, rr.Code, step.expectedCode)
-				}
+		for i := 0; i < 2; i++ {
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Errorf("expected 200, got %d", rr.Code)
 			}
-		})
-	}
+		}
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusTooManyRequests {
+			t.Errorf("expected 429, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Global limit enforcement", func(t *testing.T) {
+		mr.FastForward(2 * time.Second)
+
+		for i := 1; i <= 5; i++ {
+			req := httptest.NewRequest("GET", "/", nil)
+			req.RemoteAddr = fmt.Sprintf("1.1.1.%d:1234", i)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d", rr.Code)
+			}
+		}
+
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "1.1.1.99:1234"
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Errorf("expected 503, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Fail-open on Redis error", func(t *testing.T) {
+		mr.Close()
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "2.2.2.2:1234"
+		rr := httptest.NewRecorder()
+
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 on redis error, got %d", rr.Code)
+		}
+	})
 }

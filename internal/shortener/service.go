@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"time"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
-	"github.com/fernandesenzo/shortener/internal/shortener/utils"
 )
 
 type Service struct {
@@ -21,41 +21,20 @@ func NewService(repo LinkRepository) *Service {
 	}
 }
 
-func (s *Service) Shorten(ctx context.Context, originalURL string) (*domain.Link, error) {
-	if len(originalURL) > 100 {
-		return nil, domain.ErrURLTooLong
+func (s *Service) Shorten(ctx context.Context, originalURL string, userID string) (domain.Link, error) {
+	if err := validateURL(originalURL); err != nil {
+		return nil, err
 	}
 
-	_, err := url.ParseRequestURI(originalURL)
+	link, err := s.saveLink(ctx, userID, originalURL)
 	if err != nil {
-		return nil, domain.ErrInvalidURL
+		return nil, err
 	}
 
-	for i := 0; i < 5; i++ {
-		code, err := utils.GenerateCode(6)
-		if err != nil {
-			continue
-		}
-
-		link := &domain.Link{
-			Code:        code,
-			OriginalURL: originalURL,
-		}
-
-		if err := s.repo.Save(ctx, link); err != nil {
-			if errors.Is(err, ErrRecordAlreadyExists) {
-				continue
-			}
-			return nil, fmt.Errorf("%w: %v", domain.ErrLinkCreationFailed, err)
-		}
-
-		return link, nil
-	}
-	return nil, fmt.Errorf("%w: failed to generate unique code after 5 attempts", domain.ErrLinkCreationFailed)
-
+	return link, nil
 }
 
-func (s *Service) Get(ctx context.Context, code string) (*domain.Link, error) {
+func (s *Service) Get(ctx context.Context, code string) (domain.Link, error) {
 	link, err := s.repo.Get(ctx, code)
 
 	if err != nil {
@@ -67,4 +46,51 @@ func (s *Service) Get(ctx context.Context, code string) (*domain.Link, error) {
 	}
 
 	return link, nil
+}
+
+func (s *Service) saveLink(ctx context.Context, userID string, originalURL string) (domain.Link, error) {
+	for i := 0; i < 10; i++ {
+		code, err := GenerateCode(6)
+		if err != nil {
+			return nil, fmt.Errorf("internal error generating code: %w", err)
+		}
+		if userID == "" {
+			link := &domain.TemporaryLink{
+				OriginalURL: originalURL,
+				Code:        code,
+			}
+			if err := s.repo.TempSave(ctx, link, 24*time.Hour); err != nil {
+				if errors.Is(err, ErrRecordAlreadyExists) {
+					continue
+				}
+				return nil, fmt.Errorf("failed to save link: %w", err)
+			}
+			return link, nil
+		}
+		link := &domain.PermanentLink{
+			Code:        code,
+			OriginalURL: originalURL,
+			UserID:      userID,
+			CreatedAt:   time.Now(),
+		}
+		if err := s.repo.PermSave(ctx, link); err != nil {
+			if errors.Is(err, ErrRecordAlreadyExists) {
+				continue
+			}
+			return nil, fmt.Errorf("failed to save link: %w", err)
+		}
+		return link, nil
+	}
+	return nil, domain.ErrLinkCreationFailed
+}
+
+func validateURL(originalURL string) error {
+	if len(originalURL) > 100 {
+		return domain.ErrURLTooLong
+	}
+	_, err := url.ParseRequestURI(originalURL)
+	if err != nil {
+		return domain.ErrInvalidURL
+	}
+	return nil
 }
