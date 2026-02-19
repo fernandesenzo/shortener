@@ -7,6 +7,10 @@ import (
 	"github.com/fernandesenzo/shortener/internal/identity"
 )
 
+type contextKey string
+
+const otherKey contextKey = "otherKey"
+
 func TestGetUserID(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -28,7 +32,7 @@ func TestGetUserID(t *testing.T) {
 		},
 		{
 			name:   "different context value should not interfere",
-			ctx:    context.WithValue(context.Background(), "otherKey", "value"),
+			ctx:    context.WithValue(context.Background(), otherKey, "value"),
 			wantID: "",
 			wantOK: false,
 		},
