@@ -13,3 +13,7 @@ var ErrUserExceededLinkLimit = errors.New("user already has too many links saved
 var ErrNicknameAlreadyUsed = errors.New("nickname already exists")
 var ErrPasswordTooLong = errors.New("password too long")
 var ErrPasswordTooShort = errors.New("password too short")
+
+// auth errors
+var ErrInvalidPassword = errors.New("invalid password")
+var ErrNicknameNotFound = errors.New("nickname does not exist")
