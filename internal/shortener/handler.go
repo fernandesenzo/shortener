@@ -53,7 +53,6 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//TODO: create a middleware that does this.
 	userID, ok := identity.GetUserID(r.Context())
 	if !ok {
 		slog.ErrorContext(r.Context(), "failed to retrieve userID from context")
@@ -74,6 +73,10 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, domain.ErrInvalidURL) {
 			http.Error(w, "invalid url", http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, domain.ErrUserExceededLinkLimit) {
+			http.Error(w, "link limit exceeded", http.StatusForbidden)
 			return
 		}
 		slog.ErrorContext(r.Context(), "unknown error when creating link", "error", err)

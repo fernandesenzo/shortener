@@ -16,3 +16,4 @@ type LinkRepository interface {
 
 var ErrRecordNotFound = errors.New("record not found")
 var ErrRecordAlreadyExists = errors.New("record already exists")
+var ErrLimitExceeded = errors.New("user already exceeded link limit")

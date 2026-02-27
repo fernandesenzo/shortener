@@ -77,6 +77,9 @@ func (s *Service) saveLink(ctx context.Context, userID string, originalURL strin
 			if errors.Is(err, ErrRecordAlreadyExists) {
 				continue
 			}
+			if errors.Is(err, ErrLimitExceeded) {
+				return nil, domain.ErrUserExceededLinkLimit
+			}
 			return nil, fmt.Errorf("failed to save link: %w", err)
 		}
 		return link, nil

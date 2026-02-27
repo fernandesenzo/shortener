@@ -20,20 +20,30 @@ func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 }
 
 func (r *PostgresRepository) Save(ctx context.Context, link *domain.PermanentLink) error {
-	query := `INSERT INTO links (code, original_url, user_id) VALUES ($1,$2,$3) RETURNING id, created_at`
+	query := `
+        INSERT INTO links (code, original_url, user_id)
+        SELECT $1, $2, $3
+        WHERE (SELECT COUNT(*) FROM links WHERE user_id = $3) < 10
+        RETURNING id, created_at`
 
 	err := r.db.QueryRowContext(ctx, query, link.Code, link.OriginalURL, link.UserID).Scan(&link.ID, &link.CreatedAt)
 
 	if err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-			return ErrRecordAlreadyExists
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrLimitExceeded
 		}
-		return fmt.Errorf("postgres error code %s: %w", pqErr.Code, err)
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) {
+			if pqErr.Code == "23505" {
+				return ErrRecordAlreadyExists
+			}
+			return fmt.Errorf("postgres error code %s: %w", pqErr.Code, err)
+		}
+
+		return err
 	}
 	return nil
 }
-
 func (r *PostgresRepository) Get(ctx context.Context, code string) (*domain.PermanentLink, error) {
 	query := `SELECT id, code, original_url, created_at, user_id FROM links WHERE code = $1`
 

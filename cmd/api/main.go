@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fernandesenzo/shortener/internal/auth"
+	"github.com/fernandesenzo/shortener/internal/jwt"
 	platform "github.com/fernandesenzo/shortener/internal/platform/cache"
 	"github.com/fernandesenzo/shortener/internal/platform/postgres"
 	"github.com/fernandesenzo/shortener/internal/shortener"
@@ -83,14 +85,20 @@ func run() error {
 	serviceUser := user.NewService(pgRepoUser)
 	handlerUser := user.NewHandler(serviceUser)
 
-	rateLimiter := NewRateLimiter(redisClient, 10, 1000)
+	//starting auth service
+	jwtManager := jwt.NewManager(os.Getenv("JWT_SECRET_KEY"), time.Hour)
+	pgRepoAuth := auth.NewPostgresRepository(db)
+	serviceAuth := auth.NewService(pgRepoAuth, jwtManager)
+	handlerAuth := auth.NewHandler(serviceAuth)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/links", handler.Shorten)
 	mux.HandleFunc("GET /{code}", handler.Get)
 	mux.HandleFunc("POST /api/users", handlerUser.Create)
+	mux.HandleFunc("POST /api/login", handlerAuth.Login)
 
-	handlerStack := rateLimiter.Middleware(mux)
+	handlerStack := RateLimitMiddleware(mux, redisClient, 10, time.Hour)
+	handlerStack = AuthMiddleware(handlerStack, jwtManager)
 	handlerStack = LoggingMiddleware(handlerStack)
 
 	srv := &http.Server{

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,67 +10,99 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func TestRateLimiter(t *testing.T) {
-	mr := miniredis.RunT(t)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	rl := NewRateLimiter(client, 2, 5)
+func TestRateLimitMiddleware(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
 
-	handler := rl.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := redis.NewClient(&redis.Options{
+		Addr: mr.Addr(),
+	})
+
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}))
+	})
 
-	t.Run("IP limit enforcement", func(t *testing.T) {
-		ip := "1.1.1.1"
-		req := httptest.NewRequest("GET", "/", nil)
-		req.RemoteAddr = ip + ":1234"
+	limit := 1
+	window := time.Minute
 
-		for i := 0; i < 2; i++ {
-			rr := httptest.NewRecorder()
-			handler.ServeHTTP(rr, req)
-			if rr.Code != http.StatusOK {
-				t.Errorf("expected 200, got %d", rr.Code)
-			}
+	t.Run("X-Forwarded-For Priority", func(t *testing.T) {
+		mr.FlushAll()
+		mw := RateLimitMiddleware(nextHandler, client, limit, window)
+
+		req1 := httptest.NewRequest("POST", "/api/links", nil)
+		req1.Header.Set("X-Forwarded-For", "1.2.3.4")
+		rr1 := httptest.NewRecorder()
+		mw.ServeHTTP(rr1, req1)
+
+		if rr1.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rr1.Code)
 		}
 
-		rr := httptest.NewRecorder()
-		handler.ServeHTTP(rr, req)
-		if rr.Code != http.StatusTooManyRequests {
-			t.Errorf("expected 429, got %d", rr.Code)
+		req2 := httptest.NewRequest("POST", "/api/links", nil)
+		req2.Header.Set("X-Forwarded-For", "1.2.3.4")
+		rr2 := httptest.NewRecorder()
+		mw.ServeHTTP(rr2, req2)
+
+		if rr2.Code != http.StatusTooManyRequests {
+			t.Errorf("expected 429, got %d", rr2.Code)
 		}
 	})
 
-	t.Run("Global limit enforcement", func(t *testing.T) {
-		mr.FastForward(2 * time.Second)
+	t.Run("RemoteAddr Fallback", func(t *testing.T) {
+		mr.FlushAll()
+		mw := RateLimitMiddleware(nextHandler, client, limit, window)
 
-		for i := 1; i <= 5; i++ {
-			req := httptest.NewRequest("GET", "/", nil)
-			req.RemoteAddr = fmt.Sprintf("1.1.1.%d:1234", i)
-			rr := httptest.NewRecorder()
-			handler.ServeHTTP(rr, req)
-			if rr.Code != http.StatusOK {
-				t.Fatalf("expected 200, got %d", rr.Code)
-			}
+		req1 := httptest.NewRequest("POST", "/api/links", nil)
+		req1.RemoteAddr = "127.0.0.1:1234"
+		rr1 := httptest.NewRecorder()
+		mw.ServeHTTP(rr1, req1)
+
+		if rr1.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rr1.Code)
 		}
 
-		req := httptest.NewRequest("GET", "/", nil)
-		req.RemoteAddr = "1.1.1.99:1234"
-		rr := httptest.NewRecorder()
-		handler.ServeHTTP(rr, req)
-		if rr.Code != http.StatusServiceUnavailable {
-			t.Errorf("expected 503, got %d", rr.Code)
+		req2 := httptest.NewRequest("POST", "/api/links", nil)
+		req2.RemoteAddr = "127.0.0.1:1234"
+		rr2 := httptest.NewRecorder()
+		mw.ServeHTTP(rr2, req2)
+
+		if rr2.Code != http.StatusTooManyRequests {
+			t.Errorf("expected 429, got %d", rr2.Code)
 		}
 	})
 
-	t.Run("Fail-open on Redis error", func(t *testing.T) {
-		mr.Close()
-		req := httptest.NewRequest("GET", "/", nil)
-		req.RemoteAddr = "2.2.2.2:1234"
-		rr := httptest.NewRecorder()
+	t.Run("Skip Rate Limit on GET", func(t *testing.T) {
+		mr.FlushAll()
+		mw := RateLimitMiddleware(nextHandler, client, 0, window)
 
-		handler.ServeHTTP(rr, req)
+		req := httptest.NewRequest("GET", "/abc", nil)
+		rr := httptest.NewRecorder()
+		mw.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
-			t.Errorf("expected 200 on redis error, got %d", rr.Code)
+			t.Errorf("expected 200, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Retry-After Header", func(t *testing.T) {
+		mr.FlushAll()
+		mw := RateLimitMiddleware(nextHandler, client, 1, window)
+
+		req1 := httptest.NewRequest("POST", "/api/links", nil)
+		req1.RemoteAddr = "8.8.8.8:1234"
+		mw.ServeHTTP(httptest.NewRecorder(), req1)
+
+		req2 := httptest.NewRequest("POST", "/api/links", nil)
+		req2.RemoteAddr = "8.8.8.8:1234"
+		rr2 := httptest.NewRecorder()
+		mw.ServeHTTP(rr2, req2)
+
+		retryAfter := rr2.Header().Get("Retry-After")
+		if retryAfter == "" {
+			t.Error("expected Retry-After header, got empty string")
 		}
 	})
 }
