@@ -12,5 +12,3 @@ CREATE TABLE IF NOT EXISTS links (
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     user_id       UUID REFERENCES users(id) ON DELETE CASCADE
 );
-
--- TODO: index between users and links

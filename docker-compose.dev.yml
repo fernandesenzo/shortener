@@ -1,7 +1,11 @@
+version: '3.8'
+
 services:
   postgres:
     image: postgres:15-alpine
     container_name: shortener_db
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
@@ -17,6 +21,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: shortener_cache
+    ports:
+      - "6379:6379"
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-redis}", "--maxmemory", "5mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
@@ -25,22 +31,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-
-  app:
-    build: .
-    container_name: shortener_app
-    ports:
-      - "8080:8080"
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/shortener?sslmode=disable
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis}@redis:6379/0
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
 volumes:
   postgres_data:

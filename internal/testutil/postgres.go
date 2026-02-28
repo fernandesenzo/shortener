@@ -16,7 +16,7 @@ import (
 func SetupTestDB(t *testing.T) (*sql.DB, func()) {
 	ctx := context.Background()
 
-	migrationPath := filepath.Join("..", "..", "db", "migrations", "0001_init_schema.up.sql")
+	migrationPath := filepath.Join("..", "platform", "postgres", "migrations", "0001_init_schema.up.sql")
 
 	pgContainer, err := postgres.Run(ctx,
 		"postgres:15-alpine",

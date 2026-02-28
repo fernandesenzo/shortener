@@ -49,6 +49,7 @@ func run() error {
 	db, err := postgres.NewConnection(dbURL)
 	if err != nil {
 		slog.Error("postgres connection failed", "error", err)
+		return err
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
@@ -58,9 +59,15 @@ func run() error {
 		}
 	}()
 
+	if err = postgres.RunMigrations(db); err != nil {
+		slog.Error("failed to run migrations", "error", err)
+		return err
+	}
+
 	redisClient, err := platform.NewRedisClient(redisURL)
 	if err != nil {
 		slog.Error("redis connection failed", "error", err)
+		return err
 	}
 	defer func() {
 		if err := redisClient.Close(); err != nil {
@@ -72,20 +79,16 @@ func run() error {
 
 	slog.Info("infrastructure connected")
 
-	// starting shortener service
 	pgRepo := shortener.NewPostgresRepository(db)
 	redisRepo := shortener.NewRedisRepository(redisClient)
 	repo := shortener.NewHybridLinkRepository(pgRepo, redisRepo)
-
 	service := shortener.NewService(repo)
 	handler := shortener.NewHandler(service)
 
-	//starting the user service
 	pgRepoUser := user.NewPostgresRepository(db)
 	serviceUser := user.NewService(pgRepoUser)
 	handlerUser := user.NewHandler(serviceUser)
 
-	//starting auth service
 	jwtManager := jwt.NewManager(os.Getenv("JWT_SECRET_KEY"), time.Hour)
 	pgRepoAuth := auth.NewPostgresRepository(db)
 	serviceAuth := auth.NewService(pgRepoAuth, jwtManager)
@@ -97,8 +100,10 @@ func run() error {
 	mux.HandleFunc("POST /api/users", handlerUser.Create)
 	mux.HandleFunc("POST /api/login", handlerAuth.Login)
 
-	handlerStack := RateLimitMiddleware(mux, redisClient, 10, time.Hour)
-	handlerStack = AuthMiddleware(handlerStack, jwtManager)
+	handlerStack := AuthMiddleware(mux, jwtManager)
+	handlerStack = RateLimitMiddleware(handlerStack, redisClient, 10, time.Hour)
+	handlerStack = CORSMiddleware(handlerStack)
+	handlerStack = RecoverMiddleware(handlerStack)
 	handlerStack = LoggingMiddleware(handlerStack)
 
 	srv := &http.Server{
@@ -112,21 +117,27 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	serverErrors := make(chan error, 1)
+
 	go func() {
 		slog.Info("server starting", "port", port)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("listen and serve failed", "error", err)
-		}
+		serverErrors <- srv.ListenAndServe()
 	}()
 
-	<-ctx.Done()
-	slog.Info("shutting down")
+	select {
+	case err := <-serverErrors:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("server error: %w", err)
+		}
+	case <-ctx.Done():
+		slog.Info("shutting down OS signal received")
 
-	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancelShutdown()
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancelShutdown()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown failed: %w", err)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("graceful shutdown failed: %w", err)
+		}
 	}
 
 	slog.Info("server stopped")

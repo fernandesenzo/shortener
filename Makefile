@@ -1,24 +1,34 @@
-DB_URL=postgres://postgres:postgres@localhost:5432/shortener?sslmode=disable
+ifneq (,$(wildcard ./.env))
+    include .env
+    export
+endif
 
-.PHONY: run db-up migrate-up migrate-down create-migration setup
+APP_NAME=shortener_app
+DB_CONTAINER=shortener_db
+CACHE_CONTAINER=shortener_cache
+COMPOSE_FILE=docker-compose.dev.yml
 
-setup:
-	@which migrate > /dev/null || go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+.PHONY: run up down restart logs redis-keys db-keys
 
-db-up:
-	docker compose up -d postgres
-
-migrate-up:
-	migrate -path db/migrations -database "$(DB_URL)" up
-
-migrate-down:
-	migrate -path db/migrations -database "$(DB_URL)" down 1
-
-create-migration:
-	@if [ -z "$(name)" ]; then echo "Usage: make create-migration name=my_migration"; exit 1; fi
-	migrate create -ext sql -dir db/migrations -seq $(name)
-
-run: db-up
-	@sleep 3
-	@make migrate-up
+run: up
+	@echo "⌛ waitng for  postgres at localhost:5432..."
+	@until nc -z localhost 5432; do printf '.'; sleep 1; done
 	go run ./cmd/api
+
+up:
+	docker compose -f $(COMPOSE_FILE) up -d
+
+down:
+	docker compose -f $(COMPOSE_FILE) down
+
+restart:
+	docker compose -f $(COMPOSE_FILE) up -d --build
+
+redis-keys:
+	docker exec -it $(CACHE_CONTAINER) redis-cli -a $(REDIS_PASSWORD) KEYS "*"
+
+db-keys:
+	docker exec -it $(DB_CONTAINER) psql -U $(DB_USER) -d shortener -c "SELECT * FROM links;"
+
+logs:
+	docker compose -f $(COMPOSE_FILE) logs -f

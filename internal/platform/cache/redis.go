@@ -10,9 +10,12 @@ import (
 )
 
 func NewRedisClient(url string) (*redis.Client, error) {
-	client := redis.NewClient(&redis.Options{
-		Addr: url,
-	})
+	opts, err := redis.ParseURL(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse redis url: %w", err)
+	}
+
+	client := redis.NewClient(opts)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
