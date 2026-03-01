@@ -52,5 +52,9 @@ func RunMigrations(db *sql.DB) error {
 	}
 
 	slog.Info("database migrations applied successfully")
+
+	if err = sourceDriver.Close(); err != nil {
+		slog.Warn("error closing the migrate db driver")
+	}
 	return nil
 }

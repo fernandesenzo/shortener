@@ -99,6 +99,7 @@ func run() error {
 	mux.HandleFunc("GET /{code}", handler.Get)
 	mux.HandleFunc("POST /api/users", handlerUser.Create)
 	mux.HandleFunc("POST /api/login", handlerAuth.Login)
+	mux.Handle("DELETE /api/links/{code}", RequireAuthMiddleware(http.HandlerFunc(handler.Delete)))
 
 	handlerStack := AuthMiddleware(mux, jwtManager)
 	handlerStack = RateLimitMiddleware(handlerStack, redisClient, 10, time.Hour)

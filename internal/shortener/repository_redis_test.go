@@ -25,13 +25,13 @@ func TestRedisRepository_Table(t *testing.T) {
 			wantErr bool
 		}{
 			{
-				name:    "Save new temporary link",
+				name:    "save new temporary link",
 				link:    &domain.TemporaryLink{Code: "abc", OriginalURL: "https://test.com"},
 				ttl:     time.Hour,
 				wantErr: false,
 			},
 			{
-				name:    "Overwrite existing link (Reset TTL)",
+				name:    "overwrite existing link (Reset TTL)",
 				link:    &domain.TemporaryLink{Code: "abc", OriginalURL: "https://new-url.com"},
 				ttl:     time.Minute,
 				wantErr: false,
@@ -63,13 +63,13 @@ func TestRedisRepository_Table(t *testing.T) {
 			wantErr error
 		}{
 			{
-				name:    "Link exists",
+				name:    "link exists",
 				code:    "exists",
 				wantURL: "https://exists.com",
 				wantErr: nil,
 			},
 			{
-				name:    "Link does not exist",
+				name:    "link does not exist",
 				code:    "notfound",
 				wantURL: "",
 				wantErr: ErrRecordNotFound,
@@ -87,6 +87,40 @@ func TestRedisRepository_Table(t *testing.T) {
 					if got.OriginalURL != tt.wantURL {
 						t.Errorf("Get() URL = %v, want %v", got.OriginalURL, tt.wantURL)
 					}
+				}
+			})
+		}
+	})
+
+	t.Run("Delete", func(t *testing.T) {
+		_ = s.Set(linkPrefix+"delete_me", "https://todelete.com")
+
+		tests := []struct {
+			name    string
+			code    string
+			wantErr error
+		}{
+			{
+				name:    "delete existing link",
+				code:    "delete_me",
+				wantErr: nil,
+			},
+			{
+				name:    "delete non-existing link (Redis does not error on this)",
+				code:    "ghost_code",
+				wantErr: nil,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				err := repo.Delete(ctx, tt.code)
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("delete() error = %v, want %v", err, tt.wantErr)
+				}
+
+				if s.Exists(linkPrefix + tt.code) {
+					t.Errorf("expected key %v to be deleted from redis", linkPrefix+tt.code)
 				}
 			})
 		}

@@ -19,14 +19,20 @@ func TestPostgresRepository(t *testing.T) {
 	ctx := context.Background()
 
 	query := `
-			INSERT INTO users (nickname, password_hash)
-			VALUES ($1, $2)
-			RETURNING id
-			`
+          INSERT INTO users (nickname, password_hash)
+          VALUES ($1, $2)
+          RETURNING id
+          `
 	var userID string
 	err := db.QueryRow(query, "seeduser", "hashedpassword").Scan(&userID)
 	if err != nil {
 		t.Fatalf("error inserting seed user: %v", err)
+	}
+
+	var otherUserID string
+	err = db.QueryRow(query, "otheruser", "hashedpassword").Scan(&otherUserID)
+	if err != nil {
+		t.Fatalf("error inserting other user: %v", err)
 	}
 
 	t.Run("Save", func(t *testing.T) {
@@ -36,7 +42,7 @@ func TestPostgresRepository(t *testing.T) {
 			wantErr error
 		}{
 			{
-				name: "Success saving new link",
+				name: "success saving new link",
 				link: &domain.PermanentLink{
 					Code:        "654321",
 					OriginalURL: "https://github.com",
@@ -45,7 +51,7 @@ func TestPostgresRepository(t *testing.T) {
 				wantErr: nil,
 			},
 			{
-				name: "Fail on duplicate code",
+				name: "fail on duplicate code",
 				link: &domain.PermanentLink{
 					Code:        "654321",
 					OriginalURL: "https://another.com",
@@ -59,7 +65,7 @@ func TestPostgresRepository(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				err := repo.Save(ctx, tt.link)
 				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("Save() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("save() error = %v, want %v", err, tt.wantErr)
 				}
 			})
 		}
@@ -80,13 +86,13 @@ func TestPostgresRepository(t *testing.T) {
 			wantErr error
 		}{
 			{
-				name:    "Found existing link",
+				name:    "found existing link",
 				code:    "found1",
 				wantURL: "https://google.com",
 				wantErr: nil,
 			},
 			{
-				name:    "Link not found",
+				name:    "link not found",
 				code:    "000000",
 				wantURL: "",
 				wantErr: shortener.ErrRecordNotFound,
@@ -97,17 +103,18 @@ func TestPostgresRepository(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				got, err := repo.Get(ctx, tt.code)
 				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("Get() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("get() error = %v, want %v", err, tt.wantErr)
 					return
 				}
 				if tt.wantErr == nil {
 					if got.GetOriginalURL() != tt.wantURL {
-						t.Errorf("Get() URL = %v, want %v", got.GetOriginalURL(), tt.wantURL)
+						t.Errorf("get() URL = %v, want %v", got.GetOriginalURL(), tt.wantURL)
 					}
 				}
 			})
 		}
 	})
+
 	t.Run("Exists", func(t *testing.T) {
 		tests := []struct {
 			name       string
@@ -116,19 +123,19 @@ func TestPostgresRepository(t *testing.T) {
 			wantErr    error
 		}{
 			{
-				name:       "Link exists in database",
+				name:       "link exists in database",
 				code:       "found1",
 				wantExists: true,
 				wantErr:    nil,
 			},
 			{
-				name:       "Link code from Save test exists",
+				name:       "link code from Save test exists",
 				code:       "654321",
 				wantExists: true,
 				wantErr:    nil,
 			},
 			{
-				name:       "Link does not exist",
+				name:       "link does not exist",
 				code:       "not_real_code",
 				wantExists: false,
 				wantErr:    nil,
@@ -140,12 +147,56 @@ func TestPostgresRepository(t *testing.T) {
 				exists, err := repo.Exists(ctx, tt.code)
 
 				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("Exists() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("exists() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
 
 				if exists != tt.wantExists {
-					t.Errorf("Exists() = %v, want %v", exists, tt.wantExists)
+					t.Errorf("exists() = %v, want %v", exists, tt.wantExists)
+				}
+			})
+		}
+	})
+
+	t.Run("Delete", func(t *testing.T) {
+		seed := &domain.PermanentLink{
+			Code:        "DELETE",
+			OriginalURL: "https://delete.com",
+			UserID:      userID,
+		}
+		_ = repo.Save(ctx, seed)
+
+		tests := []struct {
+			name    string
+			code    string
+			userID  string
+			wantErr error
+		}{
+			{
+				name:    "fail to delete (wrong owner)",
+				code:    "DELETE",
+				userID:  otherUserID,
+				wantErr: shortener.ErrNoLinkDeleted,
+			},
+			{
+				name:    "fail to delete (Code not found)",
+				code:    "ghost_code",
+				userID:  userID,
+				wantErr: shortener.ErrNoLinkDeleted,
+			},
+			{
+				name:    "success deleting existing link",
+				code:    "DELETE",
+				userID:  userID,
+				wantErr: nil,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				err := repo.Delete(ctx, tt.code, tt.userID)
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("delete() error = %v, wantErr %v", err, tt.wantErr)
 				}
 			})
 		}

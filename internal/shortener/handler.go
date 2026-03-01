@@ -11,7 +11,6 @@ import (
 	"github.com/fernandesenzo/shortener/internal/identity"
 )
 
-// TODO: check recover and cors
 type Handler struct {
 	srv *Service
 }
@@ -90,6 +89,35 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	resp := shortenLinkResponse{
 		Code: link.GetCode(),
 	}
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		slog.ErrorContext(r.Context(), "failed to encode response", "error", err)
+	}
+}
+
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+
+	err := h.srv.Delete(r.Context(), code)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserCannotDeleteLink) {
+			http.Error(w, domain.ErrUserCannotDeleteLink.Error(), http.StatusForbidden) // 403
+			return
+		}
+
+		if errors.Is(err, domain.ErrUserNotAuthenticated) {
+			http.Error(w, domain.ErrUserNotAuthenticated.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		slog.ErrorContext(r.Context(), "unexpected error deleting link", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError) // 500
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	resp := deleteLinkResponse{Message: "successfully deleted"}
+
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		slog.ErrorContext(r.Context(), "failed to encode response", "error", err)
 	}

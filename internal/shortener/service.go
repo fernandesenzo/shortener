@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fernandesenzo/shortener/internal/domain"
+	"github.com/fernandesenzo/shortener/internal/identity"
 )
 
 type Service struct {
@@ -20,7 +21,21 @@ func NewService(repo LinkRepository) *Service {
 		repo: repo,
 	}
 }
-
+func (s *Service) Delete(ctx context.Context, code string) error {
+	// it would be nice to validate the code size here
+	uid, ok := identity.GetUserID(ctx)
+	if !ok {
+		return domain.ErrUserNotAuthenticated
+	}
+	if err := s.repo.Delete(ctx, code, uid); err != nil {
+		if errors.Is(err, ErrNoLinkDeleted) || errors.Is(err, ErrRecordNotFound) {
+			return domain.ErrUserCannotDeleteLink
+		}
+		slog.ErrorContext(ctx, "error deleting code", "userID", uid, "code", code, "error", err)
+		return err
+	}
+	return nil
+}
 func (s *Service) Shorten(ctx context.Context, originalURL string, userID string) (domain.Link, error) {
 	if err := validateURL(originalURL); err != nil {
 		return nil, err

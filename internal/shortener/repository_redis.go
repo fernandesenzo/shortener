@@ -44,3 +44,13 @@ func (r *RedisRepository) Get(ctx context.Context, code string) (*domain.Tempora
 		OriginalURL: url,
 	}, nil
 }
+
+func (r *RedisRepository) Delete(ctx context.Context, code string) error {
+	key := linkPrefix + code
+	err := r.client.Del(ctx, key).Err()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

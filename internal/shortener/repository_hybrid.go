@@ -49,10 +49,12 @@ func (r *HybridLinkRepository) PermSave(ctx context.Context, link *domain.Perman
 	if err != nil {
 		return err
 	}
-	_ = r.redis.Save(ctx, &domain.TemporaryLink{
+	if err = r.redis.Save(ctx, &domain.TemporaryLink{
 		OriginalURL: link.OriginalURL,
 		Code:        link.Code,
-	}, 24*time.Hour)
+	}, 24*time.Hour); err != nil {
+		slog.WarnContext(ctx, "error caching permanent link", "code", link.Code)
+	}
 
 	return nil
 }
@@ -81,6 +83,18 @@ func (r *HybridLinkRepository) Get(ctx context.Context, code string) (domain.Lin
 	}, 24*time.Hour)
 
 	return linkdb, nil
+}
+
+func (r *HybridLinkRepository) Delete(ctx context.Context, code string, userId string) error {
+	if err := r.postgres.Delete(ctx, code, userId); err != nil {
+		return err
+	}
+	if err := r.redis.Delete(ctx, code); err != nil {
+		if !errors.Is(err, ErrRecordNotFound) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *HybridLinkRepository) exists(ctx context.Context, code string) (bool, error) {

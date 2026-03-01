@@ -82,3 +82,18 @@ func (r *PostgresRepository) Exists(ctx context.Context, code string) (bool, err
 
 	return exists, nil
 }
+
+func (r *PostgresRepository) Delete(ctx context.Context, code string, userID string) error {
+	res, err := r.db.ExecContext(ctx, "DELETE FROM links WHERE code = $1 AND user_id = $2", code, userID)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNoLinkDeleted
+	}
+	return nil
+}

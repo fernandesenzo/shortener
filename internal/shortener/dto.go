@@ -7,3 +7,7 @@ type shortenLinkRequest struct {
 type shortenLinkResponse struct {
 	Code string `json:"code"`
 }
+
+type deleteLinkResponse struct {
+	Message string `json:"message"`
+}

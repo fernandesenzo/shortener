@@ -38,6 +38,32 @@ func (m *MockRepository) Get(_ context.Context, code string) (domain.Link, error
 	return m.items[code], nil
 }
 
+func (m *MockRepository) Delete(ctx context.Context, code string, userID string) error {
+	if m.shouldError {
+		return errors.New("simulated error")
+	}
+
+	if m.items == nil {
+		return shortener.ErrNoLinkDeleted
+	}
+
+	link, exists := m.items[code]
+	if !exists {
+		return shortener.ErrNoLinkDeleted
+	}
+
+	if permLink, ok := link.(*domain.PermanentLink); ok {
+		if permLink.UserID != userID {
+			return shortener.ErrNoLinkDeleted
+		}
+	} else {
+		return shortener.ErrNoLinkDeleted
+	}
+
+	delete(m.items, code)
+	return nil
+}
+
 func (m *MockRepository) SetShouldError(shouldError bool) {
 	m.shouldError = shouldError
 }
@@ -45,6 +71,7 @@ func (m *MockRepository) SetShouldError(shouldError bool) {
 func (m *MockRepository) SetCollisionCounter(amount int) {
 	m.collisionCounter = amount
 }
+
 func (m *MockRepository) save(_ context.Context, link domain.Link) error {
 	if m.shouldError {
 		return errors.New("simulated error")

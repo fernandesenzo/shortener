@@ -27,12 +27,22 @@ func TestHybridRepository(t *testing.T) {
 
 	var testUserID string
 	err := db.QueryRow(`
-		INSERT INTO users (nickname, password_hash) 
-		VALUES ('enzo_test', 'hash123') 
-		RETURNING id
-	`).Scan(&testUserID)
+       INSERT INTO users (nickname, password_hash) 
+       VALUES ('enzo_test', 'hash123') 
+       RETURNING id
+    `).Scan(&testUserID)
 	if err != nil {
 		t.Fatalf("error creating seed user for test: %v", err)
+	}
+
+	var otherUserID string
+	err = db.QueryRow(`
+       INSERT INTO users (nickname, password_hash) 
+       VALUES ('other_test', 'hash321') 
+       RETURNING id
+    `).Scan(&otherUserID)
+	if err != nil {
+		t.Fatalf("error creating second seed user for test: %v", err)
 	}
 
 	t.Run("Collisions", func(t *testing.T) {
@@ -44,28 +54,28 @@ func TestHybridRepository(t *testing.T) {
 			expectedErr error
 		}{
 			{
-				name:        "PermSave_Success",
+				name:        "permsave success",
 				linkType:    "perm",
 				code:        "123456",
 				originalURL: "https://internacional.com",
 				expectedErr: nil,
 			},
 			{
-				name:        "TempSave_Fail_ExistInPostgres",
+				name:        "tempsave fail exists on db",
 				linkType:    "temp",
 				code:        "123456",
 				originalURL: "https://palmeiras.com",
 				expectedErr: shortener.ErrRecordAlreadyExists,
 			},
 			{
-				name:        "TempSave_Success",
+				name:        "tempsave success",
 				linkType:    "temp",
 				code:        "321456",
 				originalURL: "https://fluminense.com",
 				expectedErr: nil,
 			},
 			{
-				name:        "PermSave_Fail_ExistInRedis",
+				name:        "permsave fail exists on redis",
 				linkType:    "perm",
 				code:        "321456",
 				originalURL: "https://fail.com",
@@ -123,6 +133,58 @@ func TestHybridRepository(t *testing.T) {
 
 		if !mr.Exists("link:" + code) {
 			t.Error("expected redis to be repopulated after cache miss")
+		}
+	})
+
+	t.Run("Delete_Hybrid_Flow", func(t *testing.T) {
+		code := "DELHYB"
+		url := "https://delete-hybrid.com"
+
+		err := hybrid.PermSave(ctx, &domain.PermanentLink{
+			Code:        code,
+			OriginalURL: url,
+			UserID:      testUserID,
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		_ = mr.Set("link:"+code, url)
+
+		tests := []struct {
+			name            string
+			code            string
+			userID          string
+			expectedErr     error
+			expectCacheKept bool
+		}{
+			{
+				name:            "fail to delete (Wrong Owner) keeps cache",
+				code:            code,
+				userID:          otherUserID,
+				expectedErr:     shortener.ErrNoLinkDeleted,
+				expectCacheKept: true,
+			},
+			{
+				name:            "success deleting from DB and Cache",
+				code:            code,
+				userID:          testUserID,
+				expectedErr:     nil,
+				expectCacheKept: false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				err := hybrid.Delete(ctx, tt.code, tt.userID)
+				if !errors.Is(err, tt.expectedErr) {
+					t.Errorf("expected %v, got %v", tt.expectedErr, err)
+				}
+
+				cacheExists := mr.Exists("link:" + tt.code)
+				if cacheExists != tt.expectCacheKept {
+					t.Errorf("expected cache kept: %v, got: %v", tt.expectCacheKept, cacheExists)
+				}
+			})
 		}
 	})
 }

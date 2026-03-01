@@ -8,6 +8,8 @@ var ErrInvalidURL = errors.New("invalid URL")
 var ErrURLTooLong = errors.New("URL too long")
 var ErrLinkCreationFailed = errors.New("link creation failed")
 var ErrUserExceededLinkLimit = errors.New("user already has too many links saved")
+var ErrUserNotAuthenticated = errors.New("user is not authenticated")
+var ErrUserCannotDeleteLink = errors.New("you cannot delete this link. either it does not exist or you're not the owner")
 
 // user errors
 var ErrNicknameAlreadyUsed = errors.New("nickname already exists")
